@@ -9,7 +9,7 @@ export interface Storage {
 }
 
 export interface ClientOptions {
-    url?: string
+    url: string
     project?: string
     token?: string
     localExp?: number
@@ -32,8 +32,6 @@ export interface RequestResponse {
 export interface LoginCredentials {
     email: string // The user's email address
     password: string // The user's password
-    url?: string // The API to login to (overwrites this.url)
-    project?: string // The API project to login to (overwrites this.project)
 }
 
 export interface LoginOptions {
@@ -87,20 +85,28 @@ class Keys {
 }
 
 export class DirectusSDK {
-    url?: string
-    token?: string
-    project: string = Keys.DefaultProject
+    private _url: string
+    private _project: string
+
+    get url(): string {
+        return this._url
+    }
+
+    get project(): string {
+        return this._project
+    }
 
     onAutoRefreshError?: (msg: object) => void
     onAutoRefreshSuccess?: (msg: ClientOptions) => void
 
+    private token?: string
     private localExp?: number
     private storage?: Storage
     private refreshInterval?: NodeJS.Timeout
 
     private axios: AxiosInstance
 
-    get payload(): Payload | undefined {
+    private get payload(): Payload | undefined {
         if (this.token == null) {
             return undefined
         }
@@ -131,6 +137,9 @@ export class DirectusSDK {
     }
 
     constructor(options: ClientOptions) {
+        this._url = options.url
+        this._project = Keys.DefaultProject
+
         const storage = options.storage
 
         if (storage) {
@@ -142,32 +151,27 @@ export class DirectusSDK {
                 const json: ClientOptions = JSON.parse(storedInfo)
 
                 this.token = json.token
-                this.url = json.url
-                this.project = json.project || Keys.DefaultProject
+                this._url = json.url
+                this._project = json.project || Keys.DefaultProject
                 this.localExp = json.localExp
             }
         }
+
+        // Overrides provided by the options parameter
 
         if (options.token) {
             this.token = options.token
         }
 
-        if (options.url) {
-            this.url = options.url
-        }
-
         if (options.project) {
-            this.project = options.project
+            this._project = options.project
         }
 
         if (options.localExp) {
             this.localExp = options.localExp
         }
 
-        this.axios = Axios.create({
-            paramsSerializer: qs.stringify,
-            timeout: 10 * 60 * 1000 // 10 min
-        })
+        this.axios = Axios.create({ paramsSerializer: qs.stringify, timeout: 10 * 60 * 1000 }) // 10 min
 
         if (this.token) {
             this.startInterval(true)
@@ -199,11 +203,9 @@ export class DirectusSDK {
             data: data
         }
 
-        const token = this.token
-
-        if (token) {
+        if (this.token) {
             options.headers = headers
-            options.headers["Authorization"] = `Bearer ${token}`
+            options.headers["Authorization"] = `Bearer ${this.token}`
         }
 
         try {
@@ -246,13 +248,7 @@ export class DirectusSDK {
 
                 throw error
             } else {
-                const error: RequestError = {
-                    json: false,
-                    error: err,
-                    data: null,
-                    message: "Network Error",
-                    code: -1
-                }
+                const error: RequestError = { json: false, error: err, data: null, message: "Network Error", code: -1 }
 
                 throw error
             }
@@ -285,16 +281,8 @@ export class DirectusSDK {
     async login(credentials: LoginCredentials, options?: LoginOptions) {
         this.token = undefined
 
-        this.url = credentials.url || this.url
-        this.project = credentials.project || this.project
-
         if (this.url == null) {
-            const e: RequestError = {
-                json: false,
-                code: -1,
-                message: "url property should not be null.",
-                error: null
-            }
+            const e: RequestError = { json: false, code: -1, message: "url property should not be null.", error: null }
 
             throw e
         }
@@ -312,12 +300,7 @@ export class DirectusSDK {
         this.token = res.data.token
 
         if (this.token == null) {
-            const e: RequestError = {
-                json: false,
-                code: -1,
-                message: "API Error. Please try again.",
-                error: null
-            }
+            const e: RequestError = { json: false, code: -1, message: "API Error. Please try again.", error: null }
 
             throw e
         }
@@ -366,12 +349,6 @@ export class DirectusSDK {
         return this.get("/auth/sso")
     }
 
-    reset() {
-        this.logout()
-        this.url = undefined
-        this.project = Keys.DefaultProject
-    }
-
     startInterval(fireImmediately: boolean = false) {
         if (fireImmediately) {
             this.refreshIfNeeded()
@@ -401,10 +378,7 @@ export class DirectusSDK {
 
         if (timeDiff <= 0) {
             if (this.onAutoRefreshError) {
-                this.onAutoRefreshError({
-                    message: "auth_expired_token",
-                    code: 102
-                })
+                this.onAutoRefreshError({ message: "auth_expired_token", code: 102 })
             }
 
             return
@@ -457,10 +431,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async requestPasswordReset(email: string): RequestPromise {
-        return this.post("/auth/reset-request", {
-            email,
-            instance: this.url
-        })
+        return this.post("/auth/reset-request", { email, instance: this.url })
     }
 
     // ACTIVITY
@@ -740,16 +711,10 @@ export class DirectusSDK {
     // ------------------------------------------------------------------------
 
     async uploadFiles(data: object, onUploadProgress: () => object) {
-        const headers = {
-            "Content-Type": "multipart/form-data",
-            Authorization: `Bearer ${this.token}`
-        }
+        const headers = { "Content-Type": "multipart/form-data", Authorization: `Bearer ${this.token}` }
 
         try {
-            const config: AxiosRequestConfig = {
-                headers: headers,
-                onUploadProgress: onUploadProgress
-            }
+            const config: AxiosRequestConfig = { headers: headers, onUploadProgress: onUploadProgress }
 
             const res = await this.axios.post(`${this.url}/${this.project}/files`, data, config)
 
@@ -760,12 +725,7 @@ export class DirectusSDK {
             if (error.response) {
                 throw error.response.data.error
             } else {
-                const e: RequestError = {
-                    json: false,
-                    code: -1,
-                    message: "Network Error",
-                    error: error
-                }
+                const e: RequestError = { json: false, code: -1, message: "Network Error", error: error }
 
                 throw e
             }
@@ -1204,10 +1164,7 @@ export class DirectusSDK {
      * @returns {Promise<string>} the hashed string
      */
     async hashString(string: string, hashAlgo: HashAlgorithm): Promise<string> {
-        const body = {
-            hasher: hashAlgo,
-            string: string
-        }
+        const body = { hasher: hashAlgo, string: string }
 
         const res = await this.post("/utils/hash", body)
 
@@ -1224,11 +1181,7 @@ export class DirectusSDK {
      * @returns if the hash and string match
      */
     async matchHashedString(hashedString: string, string: string, hashAlgo: HashAlgorithm): Promise<boolean> {
-        const body = {
-            hasher: hashAlgo,
-            string: string,
-            hash: hashedString
-        }
+        const body = { hasher: hashAlgo, string: string, hash: hashedString }
 
         const res = await this.post("/utils/hash/match", body)
 
@@ -1246,9 +1199,7 @@ export class DirectusSDK {
         let body: object | undefined
 
         if (length) {
-            body = {
-                length: length
-            }
+            body = { length: length }
         }
 
         const res = await this.post("/utils/random/string", body)
