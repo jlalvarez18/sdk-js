@@ -1,6 +1,6 @@
-import Axios, { AxiosInstance, AxiosRequestConfig } from 'axios'
-import * as qs from 'qs'
-import * as base64 from 'base-64'
+import Axios, { AxiosInstance, AxiosRequestConfig } from "axios"
+import * as qs from "qs"
+import * as base64 from "base-64"
 
 export interface Storage {
     getItem(key: string): any
@@ -9,7 +9,7 @@ export interface Storage {
 }
 
 export interface ClientOptions {
-    url: string
+    url?: string
     project?: string
     token?: string
     localExp?: number
@@ -80,12 +80,15 @@ export type BodyType = object | any[]
 export type PrimaryKeyType = string | number
 export type RequestPromise = Promise<any>
 
-const StorageKey = 'directus-sdk-js'
+class Keys {
+    static StorageKey = "directus-sdk-js"
+    static DefaultProject = "_"
+}
 
 export class DirectusSDK {
-    url: string
-    project: string
+    url?: string
     token?: string
+    project: string = Keys.DefaultProject
 
     onAutoRefreshError?: (msg: object) => void
     onAutoRefreshSuccess?: (msg: ClientOptions) => void
@@ -102,16 +105,16 @@ export class DirectusSDK {
         }
 
         const payloadBase64 = this.token
-            .split('.')[1]
-            .replace('-', '+')
-            .replace('_', '/')
+            .split(".")[1]
+            .replace("-", "+")
+            .replace("_", "/")
 
         const payloadDecoded = base64.decode(payloadBase64)
         const payloadObject = JSON.parse(payloadDecoded)
 
         const exp = payloadObject.exp
 
-        if (typeof exp == 'number') {
+        if (typeof exp == "number") {
             payloadObject.exp = new Date(exp * 1000)
         }
 
@@ -132,21 +135,33 @@ export class DirectusSDK {
         if (storage) {
             this.storage = storage
 
-            const storedInfo = storage.getItem(StorageKey)
+            const storedInfo = storage.getItem(Keys.StorageKey)
 
             if (storedInfo) {
                 const json: ClientOptions = JSON.parse(storedInfo)
 
                 this.token = json.token
                 this.url = json.url
-                this.project = json.project || '_'
+                this.project = json.project || Keys.DefaultProject
                 this.localExp = json.localExp
             }
         }
 
-        this.url = options.url
-        this.project = options.project || '_'
-        this.token = options.token
+        if (options.token) {
+            this.token = options.token
+        }
+
+        if (options.url) {
+            this.url = options.url
+        }
+
+        if (options.project) {
+            this.project = options.project
+        }
+
+        if (options.localExp) {
+            this.localExp = options.localExp
+        }
 
         this.axios = Axios.create({
             paramsSerializer: qs.stringify,
@@ -162,7 +177,7 @@ export class DirectusSDK {
     // -------------------------------------------------------------------------
 
     async request(
-        method: 'get' | 'post' | 'put' | 'patch' | 'delete',
+        method: "get" | "post" | "put" | "patch" | "delete",
         endpoint: string,
         params: object = {},
         data?: any,
@@ -187,7 +202,7 @@ export class DirectusSDK {
 
         if (token) {
             options.headers = headers
-            options.headers['Authorization'] = `Bearer ${token}`
+            options.headers["Authorization"] = `Bearer ${token}`
         }
 
         try {
@@ -199,65 +214,68 @@ export class DirectusSDK {
                 return responseData
             }
 
-            if (typeof responseData !== 'object') {
+            if (typeof responseData !== "object") {
                 try {
                     return JSON.parse(responseData)
-                } catch (error) {
-                    const e: RequestError = {
+                } catch (err) {
+                    const error: RequestError = {
                         json: true,
-                        error: error,
+                        error: err,
                         data: responseData,
-                        message: 'Error from request',
+                        message: "Error from request",
                         code: 0
                     }
 
-                    throw e
+                    throw error
                 }
             }
 
             return responseData
-        } catch (error) {
-            if (error.response) {
-                throw error.response.data.error
-            } else if (error.json == true) {
-                const e: RequestError = {
+        } catch (err) {
+            if (err.response) {
+                throw err.response.data.error
+            } else if (err.json == true) {
+                const error: RequestError = {
                     json: false,
-                    error: error.error,
-                    data: error.data,
-                    message: 'API returned invalid JSON',
+                    error: err.error,
+                    data: err.data,
+                    message: "API returned invalid JSON",
                     code: -2
                 }
-                throw e
+
+                throw error
             } else {
-                const e: RequestError = {
+                const error: RequestError = {
                     json: false,
-                    error: error,
+                    error: err,
                     data: null,
-                    message: 'Network Error',
+                    message: "Network Error",
                     code: -1
                 }
+
+                throw error
             }
         }
     }
 
     async get(endpoint: string, params: object = {}) {
-        return this.request('get', endpoint, params)
+        return this.request("get", endpoint, params)
     }
 
     async post(endpoint: string, body: BodyType = {}, params: object = {}) {
-        return this.request('post', endpoint, params, body)
+        return this.request("post", endpoint, params, body)
     }
 
     async patch(endpoint: string, body: BodyType = {}, params: object = {}) {
-        return this.request('patch', endpoint, params, body)
+        return this.request("patch", endpoint, params, body)
     }
 
     async put(endpoint: string, body: BodyType = {}, params: object = {}) {
-        return this.request('put', endpoint, params, body)
+        return this.request("put", endpoint, params, body)
     }
 
     async delete(endpoint: string) {
-        return this.request('delete', endpoint)
+        return this.request("delete", endpoint)
     }
 
     // AUTHENTICATION
@@ -269,17 +287,39 @@ export class DirectusSDK {
         this.url = credentials.url || this.url
         this.project = credentials.project || this.project
 
+        if (this.url == null) {
+            const e: RequestError = {
+                json: false,
+                code: -1,
+                message: "url property should not be null.",
+                error: null
+            }
+
+            throw e
+        }
+
         const persist = options ? options.persist : false
         if (persist) {
             this.startInterval()
         }
 
-        const res = await this.post('/auth/authenticate', {
+        const res = await this.post("/auth/authenticate", {
             email: credentials.email,
             password: credentials.password
         })
 
         this.token = res.data.token
+
+        if (this.token == null) {
+            const e: RequestError = {
+                json: false,
+                code: -1,
+                message: "API Error. Please try again.",
+                error: null
+            }
+
+            throw e
+        }
 
         // Expiry date is the moment we got the token + 5 minutes
         this.localExp = new Date(Date.now() + 5 * 60000).getTime()
@@ -292,13 +332,13 @@ export class DirectusSDK {
                 localExp: this.localExp
             }
 
-            this.storage.setItem(StorageKey, JSON.stringify(value))
+            this.storage.setItem(Keys.StorageKey, JSON.stringify(value))
         }
 
         const result: LoginResponse = {
             url: this.url,
-            project: this.project!,
-            token: this.token!,
+            project: this.project,
+            token: this.token,
             localExp: this.localExp
         }
 
@@ -313,14 +353,15 @@ export class DirectusSDK {
         }
 
         if (this.storage) {
-            this.storage.removeItem('directus-sdk-js')
+            this.storage.removeItem("directus-sdk-js")
         }
     }
 
-    // TODO: figure out if this is necessary
-    // reset() {
-    //     this.logout()
-    // }
+    reset() {
+        this.logout()
+        this.url = undefined
+        this.project = Keys.DefaultProject
+    }
 
     startInterval(fireImmediately: boolean = false) {
         if (fireImmediately) {
@@ -352,7 +393,7 @@ export class DirectusSDK {
         if (timeDiff <= 0) {
             if (this.onAutoRefreshError) {
                 this.onAutoRefreshError({
-                    message: 'auth_expired_token',
+                    message: "auth_expired_token",
                     code: 102
                 })
             }
@@ -379,7 +420,7 @@ export class DirectusSDK {
                 }
 
                 if (this.storage) {
-                    this.storage.setItem(StorageKey, JSON.stringify(value))
+                    this.storage.setItem(Keys.StorageKey, JSON.stringify(value))
                 }
             } catch (error) {
                 if (this.onAutoRefreshError) {
@@ -395,7 +436,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async refresh(token: string): RequestPromise {
-        return this.post('/auth/refresh', { token })
+        return this.post("/auth/refresh", { token })
     }
 
     /**
@@ -407,7 +448,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async requestPasswordReset(email: string): RequestPromise {
-        return this.post('/auth/reset-request', {
+        return this.post("/auth/reset-request", {
             email,
             instance: this.url
         })
@@ -422,7 +463,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getActivity(params: object = {}): RequestPromise {
-        return this.get('/activity', params)
+        return this.get("/activity", params)
     }
 
     // BOOKMARKS
@@ -434,18 +475,18 @@ export class DirectusSDK {
      */
     async getMyBookmarks(): Promise<any[]> {
         if (this.token == null || this.payload == null) {
-            throw 'Not Logged In'
+            throw "Not Logged In"
         }
 
         const promises = [
-            this.get('/collection_presets', {
-                'filter[title][nnull]': 1,
-                'filter[user][eq]': this.payload.id
+            this.get("/collection_presets", {
+                "filter[title][nnull]": 1,
+                "filter[user][eq]": this.payload.id
             }),
-            this.get('/collection_presets', {
-                'filter[title][nnull]': 1,
-                'filter[role][eq]': this.payload.role,
-                'filter[user][null]': 1
+            this.get("/collection_presets", {
+                "filter[title][nnull]": 1,
+                "filter[role][eq]": this.payload.role,
+                "filter[user][null]": 1
             })
         ]
 
@@ -465,7 +506,7 @@ export class DirectusSDK {
      * @return {Promise<Collection[]>}
      */
     async getCollections(params: object = {}): Promise<Collection[]> {
-        const res = await this.get('/collections', params)
+        const res = await this.get("/collections", params)
 
         return res.data
     }
@@ -476,10 +517,7 @@ export class DirectusSDK {
      * @param  {Object} [params={}] Query parameters
      * @return {Promise<Collection>}
      */
-    async getCollection(
-        name: string,
-        params: object = {}
-    ): Promise<Collection> {
+    async getCollection(name: string, params: object = {}): Promise<Collection> {
         const res = await this.get(`/collections/${name}`, params)
 
         return res.data
@@ -491,7 +529,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async createCollection(data: object): RequestPromise {
-        return this.post('/collections', data)
+        return this.post("/collections", data)
     }
 
     /**
@@ -522,7 +560,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async createCollectionPreset(data: object): RequestPromise {
-        return this.post('/collection_presets', data)
+        return this.post("/collection_presets", data)
     }
 
     /**
@@ -531,10 +569,7 @@ export class DirectusSDK {
      * @param {Object} data The bookmark info
      * @return {RequestPromise}
      */
-    async updateCollectionPreset(
-        primaryKey: PrimaryKeyType,
-        data: object
-    ): RequestPromise {
+    async updateCollectionPreset(primaryKey: PrimaryKeyType, data: object): RequestPromise {
         return this.patch(`/collection_presets/${primaryKey}`, data)
     }
 
@@ -556,7 +591,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async updateDatabase(): RequestPromise {
-        return this.post('/update')
+        return this.post("/update")
     }
 
     // EXTENSIONS
@@ -567,7 +602,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getInterfaces(): RequestPromise {
-        return this.request('get', '/interfaces', {}, {}, true)
+        return this.request("get", "/interfaces", {}, {}, true)
     }
 
     /**
@@ -575,7 +610,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getLayouts(): RequestPromise {
-        return this.request('get', '/layouts', {}, {}, true)
+        return this.request("get", "/layouts", {}, {}, true)
     }
 
     /**
@@ -583,7 +618,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getPages(): RequestPromise {
-        return this.request('get', '/pages', {}, {}, true)
+        return this.request("get", "/pages", {}, {}, true)
     }
 
     // FIELDS
@@ -595,7 +630,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getAllFields(params: object = {}): RequestPromise {
-        return this.get('/fields', params)
+        return this.get("/fields", params)
     }
 
     /**
@@ -615,11 +650,7 @@ export class DirectusSDK {
      * @param  {Object} [params={}] Query parameters
      * @return {RequestPromise}
      */
-    async getField(
-        collection: string,
-        fieldName: string,
-        params: object = {}
-    ): RequestPromise {
+    async getField(collection: string, fieldName: string, params: object = {}): RequestPromise {
         return this.get(`/fields/${collection}/${fieldName}`, params)
     }
 
@@ -640,11 +671,7 @@ export class DirectusSDK {
      * @param  {Object} fieldInfo  Fields to update
      * @return {RequestPromise}
      */
-    async updateField(
-        collection: string,
-        fieldName: string,
-        fieldInfo: object
-    ): RequestPromise {
+    async updateField(collection: string, fieldName: string, fieldInfo: object): RequestPromise {
         return this.patch(`/fields/${collection}/${fieldName}`, fieldInfo)
     }
 
@@ -684,10 +711,7 @@ export class DirectusSDK {
         fieldInfo?: object
     ): RequestPromise {
         if (fieldInfo) {
-            return this.patch(
-                `/fields/${collection}/${fieldsInfoOrFieldNames.join(',')}`,
-                fieldInfo
-            )
+            return this.patch(`/fields/${collection}/${fieldsInfoOrFieldNames.join(",")}`, fieldInfo)
         }
 
         return this.patch(`/fields/${collection}`, fieldsInfoOrFieldNames)
@@ -708,7 +732,7 @@ export class DirectusSDK {
 
     async uploadFiles(data: object, onUploadProgress: () => object) {
         const headers = {
-            'Content-Type': 'multipart/form-data',
+            "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${this.token}`
         }
 
@@ -718,11 +742,7 @@ export class DirectusSDK {
                 onUploadProgress: onUploadProgress
             }
 
-            const res = await this.axios.post(
-                `${this.url}/${this.project}/files`,
-                data,
-                config
-            )
+            const res = await this.axios.post(`${this.url}/${this.project}/files`, data, config)
 
             const resData = res.data
 
@@ -734,7 +754,7 @@ export class DirectusSDK {
                 const e: RequestError = {
                     json: false,
                     code: -1,
-                    message: 'Network Error',
+                    message: "Network Error",
                     error: error
                 }
 
@@ -753,12 +773,8 @@ export class DirectusSDK {
      * @param  {Object} body       The item's field values
      * @return {RequestPromise}
      */
-    async updateItem(
-        collection: string,
-        primaryKey: PrimaryKeyType,
-        body: object
-    ): RequestPromise {
-        if (collection.startsWith('directus_')) {
+    async updateItem(collection: string, primaryKey: PrimaryKeyType, body: object): RequestPromise {
+        if (collection.startsWith("directus_")) {
             return this.patch(`/${collection.substring(9)}/${primaryKey}`, body)
         }
 
@@ -772,7 +788,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async updateItems(collection: string, body: object[]): RequestPromise {
-        if (collection.startsWith('directus_')) {
+        if (collection.startsWith("directus_")) {
             return this.patch(`/${collection.substring(9)}`, body)
         }
 
@@ -786,7 +802,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async createItem(collection: string, body: object): RequestPromise {
-        if (collection.startsWith('directus_')) {
+        if (collection.startsWith("directus_")) {
             return this.post(`/${collection.substring(9)}`, body)
         }
 
@@ -800,7 +816,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async createItems(collection: string, body: object[]): RequestPromise {
-        if (collection.startsWith('directus_')) {
+        if (collection.startsWith("directus_")) {
             return this.post(`/${collection.substring(9)}`, body)
         }
 
@@ -813,13 +829,10 @@ export class DirectusSDK {
      * @param  {Object} [params={}]   Query parameters
      * @return {Promise<T[]>}
      */
-    async getItems<T extends Item>(
-        collection: string,
-        params: object = {}
-    ): Promise<T[]> {
+    async getItems<T extends Item>(collection: string, params: object = {}): Promise<T[]> {
         let res: any
 
-        if (collection.startsWith('directus_')) {
+        if (collection.startsWith("directus_")) {
             res = await this.get(`/${collection.substring(9)}`, params)
         }
 
@@ -835,18 +848,11 @@ export class DirectusSDK {
      * @param  {Object} [params={}] Query parameters
      * @return {Promise<T>}
      */
-    async getItem<T extends Item>(
-        collection: string,
-        primaryKey: PrimaryKeyType,
-        params: object = {}
-    ): Promise<T> {
+    async getItem<T extends Item>(collection: string, primaryKey: PrimaryKeyType, params: object = {}): Promise<T> {
         let res: any
 
-        if (collection.startsWith('directus_')) {
-            res = await this.get(
-                `/${collection.substring(9)}/${primaryKey}`,
-                params
-            )
+        if (collection.startsWith("directus_")) {
+            res = await this.get(`/${collection.substring(9)}/${primaryKey}`, params)
         }
 
         res = await this.get(`/items/${collection}/${primaryKey}`, params)
@@ -860,11 +866,8 @@ export class DirectusSDK {
      * @param  {String|Number} primaryKey Primary key of the item
      * @return {RequestPromise}
      */
-    async deleteItem(
-        collection: string,
-        primaryKey: PrimaryKeyType
-    ): RequestPromise {
-        if (collection.startsWith('directus_')) {
+    async deleteItem(collection: string, primaryKey: PrimaryKeyType): RequestPromise {
+        if (collection.startsWith("directus_")) {
             return this.delete(`/${collection.substring(9)}/${primaryKey}`)
         }
 
@@ -877,17 +880,12 @@ export class DirectusSDK {
      * @param  {Array} primaryKey Primary key of the item
      * @return {RequestPromise}
      */
-    async deleteItems(
-        collection: string,
-        primaryKeys: PrimaryKeyType[]
-    ): RequestPromise {
-        if (collection.startsWith('directus_')) {
-            return this.delete(
-                `/${collection.substring(9)}/${primaryKeys.join(',')}`
-            )
+    async deleteItems(collection: string, primaryKeys: PrimaryKeyType[]): RequestPromise {
+        if (collection.startsWith("directus_")) {
+            return this.delete(`/${collection.substring(9)}/${primaryKeys.join(",")}`)
         }
 
-        return this.delete(`/items/${collection}/${primaryKeys.join(',')}`)
+        return this.delete(`/items/${collection}/${primaryKeys.join(",")}`)
     }
 
     // LISTING PREFERENCES
@@ -899,33 +897,33 @@ export class DirectusSDK {
      */
     async getMyListingPreferences(collection: string): Promise<object> {
         if (this.token == null || this.payload == null) {
-            throw 'Not logged in'
+            throw "Not logged in"
         }
 
         const promises = [
-            this.get('/collection_presets', {
+            this.get("/collection_presets", {
                 limit: 1,
-                'filter[title][null]': 1,
-                'filter[collection][eq]': collection,
-                'filter[role][null]': 1,
-                'filter[user][null]': 1,
-                sort: '-id'
+                "filter[title][null]": 1,
+                "filter[collection][eq]": collection,
+                "filter[role][null]": 1,
+                "filter[user][null]": 1,
+                sort: "-id"
             }),
-            this.get('/collection_presets', {
+            this.get("/collection_presets", {
                 limit: 1,
-                'filter[title][null]': 1,
-                'filter[collection][eq]': collection,
-                'filter[role][eq]': this.payload.role,
-                'filter[user][null]': 1,
-                sort: '-id'
+                "filter[title][null]": 1,
+                "filter[collection][eq]": collection,
+                "filter[role][eq]": this.payload.role,
+                "filter[user][null]": 1,
+                sort: "-id"
             }),
-            this.get('/collection_presets', {
+            this.get("/collection_presets", {
                 limit: 1,
-                'filter[title][null]': 1,
-                'filter[collection][eq]': collection,
-                'filter[role][eq]': this.payload.role,
-                'filter[user][eq]': this.payload.id,
-                sort: '-id'
+                "filter[title][null]": 1,
+                "filter[collection][eq]": collection,
+                "filter[role][eq]": this.payload.role,
+                "filter[user][eq]": this.payload.id,
+                sort: "-id"
             })
         ]
 
@@ -957,7 +955,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getPermissions(params: object = {}): RequestPromise {
-        return this.getItems('directus_permissions', params)
+        return this.getItems("directus_permissions", params)
     }
 
     /**
@@ -966,7 +964,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getMyPermissions(params: object = {}): RequestPromise {
-        return this.get('/permissions/me', params)
+        return this.get("/permissions/me", params)
     }
 
     /**
@@ -975,7 +973,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async createPermissions(data: any[]): RequestPromise {
-        return this.post('/permissions', data)
+        return this.post("/permissions", data)
     }
 
     /**
@@ -984,7 +982,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async updatePermissions(data: any[]): RequestPromise {
-        return this.patch('/permissions', data)
+        return this.patch("/permissions", data)
     }
 
     // RELATIONS
@@ -996,17 +994,14 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getRelations(params: object = {}): RequestPromise {
-        return this.get('/relations', params)
+        return this.get("/relations", params)
     }
 
     async createRelation(data: BodyType): RequestPromise {
-        return this.post('/relations', data)
+        return this.post("/relations", data)
     }
 
-    async updateRelation(
-        primaryKey: PrimaryKeyType,
-        data: BodyType
-    ): RequestPromise {
+    async updateRelation(primaryKey: PrimaryKeyType, data: BodyType): RequestPromise {
         return this.patch(`/relations/${primaryKey}`, data)
     }
 
@@ -1017,11 +1012,11 @@ export class DirectusSDK {
      */
     async getCollectionRelations(collection: string): RequestPromise {
         return Promise.all([
-            this.get('/relations', {
-                'filter[collection_a][eq]': collection
+            this.get("/relations", {
+                "filter[collection_a][eq]": collection
             }),
-            this.get('/relations', {
-                'filter[collection_b][eq]': collection
+            this.get("/relations", {
+                "filter[collection_b][eq]": collection
             })
         ])
     }
@@ -1036,16 +1031,9 @@ export class DirectusSDK {
      * @param  {Object} [params={}] Query parameters
      * @return {RequestPromise}
      */
-    async getItemRevisions(
-        collection: string,
-        primaryKey: PrimaryKeyType,
-        params: object = {}
-    ): RequestPromise {
-        if (collection.startsWith('directus_')) {
-            return this.get(
-                `/${collection.substring(9)}/${primaryKey}/revisions`,
-                params
-            )
+    async getItemRevisions(collection: string, primaryKey: PrimaryKeyType, params: object = {}): RequestPromise {
+        if (collection.startsWith("directus_")) {
+            return this.get(`/${collection.substring(9)}/${primaryKey}/revisions`, params)
         }
 
         return this.get(`/items/${collection}/${primaryKey}/revisions`, params)
@@ -1058,20 +1046,12 @@ export class DirectusSDK {
      * @param  {Number} revisionID The ID of the revision to revert to
      * @return {RequestPromise}
      */
-    async revert(
-        collection: string,
-        primaryKey: PrimaryKeyType,
-        revisionID: number
-    ): RequestPromise {
-        if (collection.startsWith('directus_')) {
-            return this.patch(
-                `/${collection.substring(9)}/${primaryKey}/revert/${revisionID}`
-            )
+    async revert(collection: string, primaryKey: PrimaryKeyType, revisionID: number): RequestPromise {
+        if (collection.startsWith("directus_")) {
+            return this.patch(`/${collection.substring(9)}/${primaryKey}/revert/${revisionID}`)
         }
 
-        return this.patch(
-            `/items/${collection}/${primaryKey}/revert/${revisionID}`
-        )
+        return this.patch(`/items/${collection}/${primaryKey}/revert/${revisionID}`)
     }
 
     // ROLES
@@ -1083,10 +1063,7 @@ export class DirectusSDK {
      * @param  {Object} [params={}] Query parameters
      * @return {RequestPromise}
      */
-    async getRole(
-        primaryKey: PrimaryKeyType,
-        params: object = {}
-    ): RequestPromise {
+    async getRole(primaryKey: PrimaryKeyType, params: object = {}): RequestPromise {
         return this.get(`/roles/${primaryKey}`, params)
     }
 
@@ -1096,7 +1073,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getRoles(params: object = {}): RequestPromise {
-        return this.get('/roles', params)
+        return this.get("/roles", params)
     }
 
     /**
@@ -1105,11 +1082,8 @@ export class DirectusSDK {
      * @param  {Object} body       The fields to update
      * @return {RequestPromise}
      */
-    async updateRole(
-        primaryKey: PrimaryKeyType,
-        body: BodyType
-    ): RequestPromise {
-        return this.updateItem('directus_roles', primaryKey, body)
+    async updateRole(primaryKey: PrimaryKeyType, body: BodyType): RequestPromise {
+        return this.updateItem("directus_roles", primaryKey, body)
     }
 
     /**
@@ -1118,7 +1092,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     createRole(body: object): RequestPromise {
-        return this.createItem('directus_roles', body)
+        return this.createItem("directus_roles", body)
     }
 
     /**
@@ -1127,7 +1101,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     deleteRole(primaryKey: PrimaryKeyType): RequestPromise {
-        return this.deleteItem('directus_roles', primaryKey)
+        return this.deleteItem("directus_roles", primaryKey)
     }
 
     // SETTINGS
@@ -1139,7 +1113,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getSettings(params: object = {}): RequestPromise {
-        return this.get('/settings', params)
+        return this.get("/settings", params)
     }
 
     /**
@@ -1148,7 +1122,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getSettingsFields(params: object = {}): RequestPromise {
-        return this.get('/settings/fields', params)
+        return this.get("/settings/fields", params)
     }
 
     // USERS
@@ -1160,7 +1134,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getUsers(params: object = {}): RequestPromise {
-        return this.get('/users', params)
+        return this.get("/users", params)
     }
 
     /**
@@ -1169,10 +1143,7 @@ export class DirectusSDK {
      * @param  {Object} [params={}] Query parameters
      * @return {RequestPromise}
      */
-    async getUser(
-        primaryKey: PrimaryKeyType,
-        params: object = {}
-    ): RequestPromise {
+    async getUser(primaryKey: PrimaryKeyType, params: object = {}): RequestPromise {
         return this.get(`/users/${primaryKey}`, params)
     }
 
@@ -1182,7 +1153,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getMe(params: object = {}): RequestPromise {
-        return this.get('/users/me', params)
+        return this.get("/users/me", params)
     }
 
     /**
@@ -1192,7 +1163,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async updateUser(primaryKey: PrimaryKeyType, body: object): RequestPromise {
-        return this.updateItem('directus_users', primaryKey, body)
+        return this.updateItem("directus_users", primaryKey, body)
     }
 
     // UTILS
@@ -1203,7 +1174,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async ping(): RequestPromise {
-        return this.request('get', '/server/ping', {}, {}, true)
+        return this.request("get", "/server/ping", {}, {}, true)
     }
 
     /**
@@ -1211,7 +1182,7 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async serverInfo(): RequestPromise {
-        return this.request('get', '/', {}, {}, true)
+        return this.request("get", "/", {}, {}, true)
     }
 
     /**
@@ -1219,6 +1190,6 @@ export class DirectusSDK {
      * @return {RequestPromise}
      */
     async getThirdPartyAuthProviders(): RequestPromise {
-        return this.get('/auth/sso')
+        return this.get("/auth/sso")
     }
 }
