@@ -79,6 +79,7 @@ export interface Item {
 export type BodyType = object | any[]
 export type PrimaryKeyType = string | number
 export type RequestPromise = Promise<any>
+export type HashAlgorithm = "core" | "bcrypt" | "sha1" | "sha224" | "sha256" | "sha384" | "sha512"
 
 class Keys {
     static StorageKey = "directus-sdk-js"
@@ -355,6 +356,14 @@ export class DirectusSDK {
         if (this.storage) {
             this.storage.removeItem("directus-sdk-js")
         }
+    }
+
+    /**
+     * Get all the setup third party auth providers
+     * @return {RequestPromise}
+     */
+    async getThirdPartyAuthProviders(): RequestPromise {
+        return this.get("/auth/sso")
     }
 
     reset() {
@@ -1166,7 +1175,7 @@ export class DirectusSDK {
         return this.updateItem("directus_users", primaryKey, body)
     }
 
-    // UTILS
+    // Server
     // -------------------------------------------------------------------------
 
     /**
@@ -1185,11 +1194,67 @@ export class DirectusSDK {
         return this.request("get", "/", {}, {}, true)
     }
 
+    // Utilties
+    // -------------------------------------------------------------------------
+
     /**
-     * Get all the setup third party auth providers
-     * @return {RequestPromise}
+     * Hashes a submitted string using the chosen algorithm.
+     * @param string string to convert to a hash
+     * @param hashAlgo hashing algorithm to use
+     * @returns {Promise<string>} the hashed string
      */
-    async getThirdPartyAuthProviders(): RequestPromise {
-        return this.get("/auth/sso")
+    async hashString(string: string, hashAlgo: HashAlgorithm): Promise<string> {
+        const body = {
+            hasher: hashAlgo,
+            string: string
+        }
+
+        const res = await this.post("/utils/hash", body)
+
+        const hash: string = res.data.hash
+
+        return hash
+    }
+
+    /**
+     * Verifies that a string hashed with a given algorithm matches a hashed string.
+     * @param hashedString  the already hashed string to check
+     * @param string        the plain string to check against
+     * @param hashAlgo      hashing algorithm to use
+     * @returns if the hash and string match
+     */
+    async matchHashedString(hashedString: string, string: string, hashAlgo: HashAlgorithm): Promise<boolean> {
+        const body = {
+            hasher: hashAlgo,
+            string: string,
+            hash: hashedString
+        }
+
+        const res = await this.post("/utils/hash/match", body)
+
+        const valid: boolean = res.data.valid
+
+        return valid
+    }
+
+    /**
+     * Returns a randomly generated alphanumeric string.
+     * @param {number} length length of string to generate
+     * @returns {Promise<string>} the randomly created string
+     */
+    async generateRandomString(length?: number): Promise<string> {
+        let body: object | undefined
+
+        if (length) {
+            body = {
+                length: length
+            }
+        }
+
+        const res = await this.post("/utils/random/string", body)
+
+        const value: string = res.data.random
+
+        return value
     }
 }
